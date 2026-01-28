@@ -93,86 +93,112 @@
   </main>
 
   <script>
+    function load(key) {
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    }
+    function save(key, data) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+
     function saveDiary() {
-      const text = document.getElementById('diaryText').value.trim();
-      const imageInput = document.getElementById('diaryImage');
-      let imageData = null;
+      const textEl = document.getElementById('diaryText');
+      const imgEl = document.getElementById('diaryImage');
+      const text = textEl.value.trim();
 
-      if (!text && !imageInput.files[0]) return;
+      if (!text && !imgEl.files[0]) return;
 
-      if (imageInput.files[0]) {
+      if (imgEl.files[0]) {
         const reader = new FileReader();
-        reader.onload = function () {
-          imageData = reader.result;
-          saveEntry(text, imageData);
-        };
-        reader.readAsDataURL(imageInput.files[0]);
+        reader.onload = () => addDiary(text, reader.result);
+        reader.readAsDataURL(imgEl.files[0]);
       } else {
-        saveEntry(text, null);
+        addDiary(text, null);
       }
     }
 
-    function saveEntry(text, imageData) {
-      const entry = { text, image: imageData, date: new Date().toLocaleString() };
-      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
-      entries.unshift(entry);
-      localStorage.setItem('diary', JSON.stringify(entries));
+    function addDiary(text, image) {
+      const diary = load('diary');
+      diary.unshift({ text, image, date: new Date().toLocaleString() });
+      save('diary', diary);
       document.getElementById('diaryText').value = '';
       document.getElementById('diaryImage').value = '';
       renderDiary();
     }
 
     function renderDiary() {
-      const container = document.getElementById('diaryEntries');
-      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
-      container.innerHTML = '';
-      entries.forEach((e, index) => {
+      const box = document.getElementById('diaryEntries');
+      const diary = load('diary');
+      box.innerHTML = '';
+      diary.forEach((e, i) => {
         const div = document.createElement('div');
         div.className = 'entry';
-        let html = `<div class="date">${e.date}</div>`;
-        if (e.text) html += `<div contenteditable="true" onblur="editDiary(${index}, this.innerText)">${e.text}</div>`;
-        if (e.image) html += `<img src="${e.image}" style="max-width:100%; margin-top:8px; border-radius:12px;" />`;
-        html += `<button onclick="deleteDiary(${index})" style="margin-top:8px; background:#eee; color:#333;">삭제</button>`;
-        div.innerHTML = html;
-        container.appendChild(div);
+        div.innerHTML = `
+          <div class="date">${e.date}</div>
+          <div contenteditable="true" onblur="editDiary(${i}, this.innerText)">${e.text || ''}</div>
+          ${e.image ? `<img src="${e.image}" style="max-width:100%; margin-top:8px; border-radius:12px;" />` : ''}
+          <button onclick="deleteDiary(${i})">삭제</button>
+        `;
+        box.appendChild(div);
       });
-      });
+    }
+
+    function editDiary(i, text) {
+      const diary = load('diary');
+      diary[i].text = text.trim();
+      save('diary', diary);
+    }
+
+    function deleteDiary(i) {
+      const diary = load('diary');
+      diary.splice(i, 1);
+      save('diary', diary);
+      renderDiary();
     }
 
     function addGuestbook() {
       const name = document.getElementById('guestName').value.trim() || '익명';
-      const message = document.getElementById('guestMessage').value.trim();
+      const msgEl = document.getElementById('guestMessage');
+      const message = msgEl.value.trim();
       if (!message) return;
-      const entry = { name, message, date: new Date().toLocaleString() };
-      const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
-      entries.unshift(entry);
-      localStorage.setItem('guestbook', JSON.stringify(entries));
-      document.getElementById('guestName').value = '';
-      document.getElementById('guestMessage').value = '';
-      renderGuestbook();
 
-    function deleteDiary(index) {
-      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
-      entries.splice(index, 1);
-      localStorage.setItem('diary', JSON.stringify(entries));
-      renderDiary();
-    }
-
-    function editDiary(index, newText) {
-      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
-      entries[index].text = newText.trim();
-      localStorage.setItem('diary', JSON.stringify(entries));
-    }
-
-    function deleteGuestbook(index) {
-      const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
-      entries.splice(index, 1);
-      localStorage.setItem('guestbook', JSON.stringify(entries));
+      const book = load('guestbook');
+      book.unshift({ name, message, date: new Date().toLocaleString() });
+      save('guestbook', book);
+      msgEl.value = '';
       renderGuestbook();
     }
 
-    function editGuestbook(index, newText) {
-      const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
-      entries[index].message = newText.trim();
-      localStorage.setItem('guestbook', JSON.stringify(entries));
+    function renderGuestbook() {
+      const box = document.getElementById('guestEntries');
+      const book = load('guestbook');
+      box.innerHTML = '';
+      book.forEach((e, i) => {
+        const div = document.createElement('div');
+        div.className = 'entry';
+        div.innerHTML = `
+          <div class="date">${e.date} · ${e.name}</div>
+          <div contenteditable="true" onblur="editGuestbook(${i}, this.innerText)">${e.message}</div>
+          <button onclick="deleteGuestbook(${i})">삭제</button>
+        `;
+        box.appendChild(div);
+      });
     }
+
+    function editGuestbook(i, text) {
+      const book = load('guestbook');
+      book[i].message = text.trim();
+      save('guestbook', book);
+    }
+
+    function deleteGuestbook(i) {
+      const book = load('guestbook');
+      book.splice(i, 1);
+      save('guestbook', book);
+      renderGuestbook();
+    }
+
+    renderDiary();
+    renderGuestbook();
+  </script>
+</body>
+</html>
