@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>분홍 일기장</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background-color: #ffd6e8;
+      background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/640px-Cat03.jpg');
+      background-repeat: no-repeat;
+      background-position: bottom right;
+      background-size: 200px;
+      color: #333;
+    }
+    header {
+      padding: 24px;
+      text-align: center;
+      font-size: 28px;
+      font-weight: 600;
+    }
+    main {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    section {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h2 {
+      margin-top: 0;
+    }
+    textarea, input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px;
+      margin-top: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 12px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 20px;
+      background-color: #ff7fbf;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #ff5fa8;
+    }
+    .entry {
+      border-top: 1px solid #eee;
+      padding-top: 12px;
+      margin-top: 12px;
+    }
+    .date {
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <header>🌸 분홍 일기장 🌸</header>
+  <main style="display:flex; gap:24px; align-items:flex-start;">
+    <!-- 일기 본문 -->
+    <section id="diary" style="flex:3;">
+      <h2>오늘의 일기</h2>
+      <textarea id="diaryText" rows="6" placeholder="오늘 있었던 일을 적어보세요..."></textarea>
+      <input type="file" id="diaryImage" accept="image/*" />
+      <button onclick="saveDiary()">일기 저장</button>
+      <div id="diaryEntries"></div>
+    </section>
+
+    <!-- 방명록 사이드바 -->
+    <section id="guestbook" style="flex:1; position:sticky; top:24px;">
+      <h2>방명록</h2>
+      <input id="guestName" placeholder="이름" />
+      <textarea id="guestMessage" rows="4" placeholder="하고 싶은 말을 남겨주세요"></textarea>
+      <button onclick="addGuestbook()">방명록 남기기</button>
+      <div id="guestEntries"></div>
+    </section>
+  </main>
+
+  <script>
+    function saveDiary() {
+      const text = document.getElementById('diaryText').value.trim();
+      const imageInput = document.getElementById('diaryImage');
+      let imageData = null;
+
+      if (!text && !imageInput.files[0]) return;
+
+      if (imageInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function () {
+          imageData = reader.result;
+          saveEntry(text, imageData);
+        };
+        reader.readAsDataURL(imageInput.files[0]);
+      } else {
+        saveEntry(text, null);
+      }
+    }
+
+    function saveEntry(text, imageData) {
+      const entry = { text, image: imageData, date: new Date().toLocaleString() };
+      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
+      entries.unshift(entry);
+      localStorage.setItem('diary', JSON.stringify(entries));
+      document.getElementById('diaryText').value = '';
+      document.getElementById('diaryImage').value = '';
+      renderDiary();
+    }
+
+    function renderDiary() {
+      const container = document.getElementById('diaryEntries');
+      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
+      container.innerHTML = '';
+      entries.forEach(e => {
+        const div = document.createElement('div');
+        div.className = 'entry';
+        let html = `<div class="date">${e.date}</div>`;
+        if (e.text) html += `<div>${e.text}</div>`;
+        if (e.image) html += `<img src="${e.image}" style="max-width:100%; margin-top:8px; border-radius:12px;" />`;
+        div.innerHTML = html;
+        container.appendChild(div);
+      });
+    }
+
+    function addGuestbook() {
+      const name = document.getElementById('guestName').value.trim() || '익명';
+      const message = document.getElementById('guestMessage').value.trim();
+      if (!message) return;
+      const entry = { name, message, date: new Date().toLocaleString() };
+      const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
+      entries.unshift(entry);
+      localStorage.setItem('guestbook', JSON.stringify(entries));
+      document.getElementById('guestName').value = '';
+      document.getElementById('guestMessage').value = '';
+      renderGuestbook();
+    }
+
+    function renderGuestbook() {
+      const container = document.getElementById('guestEntries');
+      const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
+      container.innerHTML = '';
+      entries.forEach(e => {
+        const div = document.createElement('div');
+        div.className = 'entry';
+        div.innerHTML = `<div class="date">${e.date} · ${e.name}</div><div>${e.message}</div>`;
+        container.appendChild(div);
+      });
+    }
+
+    renderDiary();
+    renderGuestbook();
+  </script>
+</body>
+</html>
