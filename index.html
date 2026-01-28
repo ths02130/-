@@ -78,6 +78,7 @@
       <input type="file" id="diaryImage" accept="image/*" />
       <button onclick="saveDiary()">일기 저장</button>
       <div id="diaryEntries"></div>
+      <button onclick="clearDiary()" style="background:#ccc; color:#333;">일기 전체 삭제</button>
     </section>
 
     <!-- 방명록 사이드바 -->
@@ -87,6 +88,7 @@
       <textarea id="guestMessage" rows="4" placeholder="하고 싶은 말을 남겨주세요"></textarea>
       <button onclick="addGuestbook()">방명록 남기기</button>
       <div id="guestEntries"></div>
+      <button onclick="clearGuestbook()" style="background:#ccc; color:#333;">방명록 전체 삭제</button>
     </section>
   </main>
 
@@ -124,14 +126,16 @@
       const container = document.getElementById('diaryEntries');
       const entries = JSON.parse(localStorage.getItem('diary') || '[]');
       container.innerHTML = '';
-      entries.forEach(e => {
+      entries.forEach((e, index) => {
         const div = document.createElement('div');
         div.className = 'entry';
         let html = `<div class="date">${e.date}</div>`;
-        if (e.text) html += `<div>${e.text}</div>`;
+        if (e.text) html += `<div contenteditable="true" onblur="editDiary(${index}, this.innerText)">${e.text}</div>`;
         if (e.image) html += `<img src="${e.image}" style="max-width:100%; margin-top:8px; border-radius:12px;" />`;
+        html += `<button onclick="deleteDiary(${index})" style="margin-top:8px; background:#eee; color:#333;">삭제</button>`;
         div.innerHTML = html;
         container.appendChild(div);
+      });
       });
     }
 
@@ -146,22 +150,29 @@
       document.getElementById('guestName').value = '';
       document.getElementById('guestMessage').value = '';
       renderGuestbook();
+
+    function deleteDiary(index) {
+      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
+      entries.splice(index, 1);
+      localStorage.setItem('diary', JSON.stringify(entries));
+      renderDiary();
     }
 
-    function renderGuestbook() {
-      const container = document.getElementById('guestEntries');
+    function editDiary(index, newText) {
+      const entries = JSON.parse(localStorage.getItem('diary') || '[]');
+      entries[index].text = newText.trim();
+      localStorage.setItem('diary', JSON.stringify(entries));
+    }
+
+    function deleteGuestbook(index) {
       const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
-      container.innerHTML = '';
-      entries.forEach(e => {
-        const div = document.createElement('div');
-        div.className = 'entry';
-        div.innerHTML = `<div class="date">${e.date} · ${e.name}</div><div>${e.message}</div>`;
-        container.appendChild(div);
-      });
+      entries.splice(index, 1);
+      localStorage.setItem('guestbook', JSON.stringify(entries));
+      renderGuestbook();
     }
 
-    renderDiary();
-    renderGuestbook();
-  </script>
-</body>
-</html>
+    function editGuestbook(index, newText) {
+      const entries = JSON.parse(localStorage.getItem('guestbook') || '[]');
+      entries[index].message = newText.trim();
+      localStorage.setItem('guestbook', JSON.stringify(entries));
+    }
