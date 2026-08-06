@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>커스텀 샘플러 지원 멀티 트랙 작곡 프로그램</title>
+    <title>커스텀 악기(샘플러) 지원 멀티 트랙 작곡 프로그램</title>
     <style>
         body { font-family: sans-serif; text-align: center; background: #1b1b1b; color: #fff; padding: 15px; margin: 0; }
         h1 { font-size: 1.5rem; margin-bottom: 5px; color: #fff; }
@@ -302,7 +302,7 @@
                         document.getElementById('bpmDisplay').textContent = `${currentBPM} BPM`;
 
                         renderTrackList(); drawPatternManager(); drawGrid(); drawTimelineUI(); saveToLocalStorage();
-                        alert("📁 프로젝트를 정상적으로 불러왔습니다! (커스텀 음원은 다시 불러와주셔야 합니다)");
+                        alert("📁 프로젝트를 정상적으로 불러왔습니다!");
                     } catch(err) { alert("로드 에러: " + err.message); }
                     e.target.value = '';
                 };
@@ -439,7 +439,6 @@
                             <option value="custom" ${isCustom ? 'selected' : ''}>🎙️ 커스텀 샘플 파일</option>
                         </select>
 
-                        <!-- 커스텀 악기일 경우에만 노출되는 영역 -->
                         ${isCustom ? `
                             <div class="custom-file-area">
                                 <button class="custom-file-btn" onclick="document.getElementById('sampleInput-${idx}').click()">📂 소리 파일 선택</button>
@@ -467,9 +466,8 @@
         
         function updateTrackInstrument(idx, val) { 
             tracks[idx].instrument = val; 
-            renderTrackList(); // UI 다시 그려서 버튼 숨김/노출 적용
+            renderTrackList();
             
-            // 커스텀으로 변경했을 때 기존 불러온 파일이 없으면 즉시 파일 탐색기 열기
             if (val === 'custom' && !tracks[idx].audioBuffer) {
                 setTimeout(() => {
                     const fileInput = document.getElementById(`sampleInput-${idx}`);
@@ -604,6 +602,7 @@
             };
         }
 
+        // 💡 오디오 재생엔진 수정: 이음줄 음장(Sustain) 완벽 유지 보완
         function playTone(freq, type = 'triangle', volumePercent = 80, duration = 0.2, key = null, buffer = null) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -611,16 +610,19 @@
             const now = audioCtx.currentTime;
             const targetGain = (volumePercent / 100) * 0.25;
 
+            // 1. 커스텀 샘플 모드 (루프 반복을 적용하여 4칸 이상도 끊기지 않음)
             if (type === 'custom' && buffer) {
                 const source = audioCtx.createBufferSource();
                 source.buffer = buffer;
+                source.loop = true; // 소리 짧아도 루프 처리하여 이음줄 칸수만큼 보장
 
                 const rate = freq / BASE_FREQ;
                 source.playbackRate.setValueAtTime(rate, now);
 
                 const gain = audioCtx.createGain();
                 gain.gain.setValueAtTime(targetGain, now);
-                gain.gain.linearRampToValueAtTime(targetGain, now + Math.max(0.01, duration - 0.02));
+                // 지정된 전체 duration 직전까지 볼륨 유지 후 스무스하게 릴리즈
+                gain.gain.setValueAtTime(targetGain, now + Math.max(0.01, duration - 0.05));
                 gain.gain.linearRampToValueAtTime(0.0001, now + duration);
 
                 source.connect(gain);
@@ -632,6 +634,7 @@
                 return { osc: source, gain };
             }
 
+            // 2. 노이즈 타악기 모드
             if (type === 'noise') {
                 const bufferSize = audioCtx.sampleRate * Math.min(duration, 0.5);
                 const noiseBuf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -648,16 +651,17 @@
                 return null;
             }
 
+            // 3. 내장 파형 신시사이저 (서스테인을 완벽히 유지하여 긴 음 연주 지원)
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = type; 
             osc.frequency.setValueAtTime(freq, now);
             
-            const fadeOutDuration = 0.03;
+            const fadeOutDuration = 0.05;
             const sustainEndTime = Math.max(now, now + duration - fadeOutDuration);
 
             gain.gain.setValueAtTime(targetGain, now);
-            gain.gain.setValueAtTime(targetGain, sustainEndTime);
+            gain.gain.setValueAtTime(targetGain, sustainEndTime); // 이음줄로 연결된 전체 박자 끝까지 음 유지
             gain.gain.linearRampToValueAtTime(0.0001, now + duration);
             
             osc.connect(gain); gain.connect(audioCtx.destination); 
