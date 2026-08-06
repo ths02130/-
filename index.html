@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>커스텀 악기(샘플러) 지원 멀티 트랙 작곡 프로그램</title>
+    <title>커스텀 악기 지원 멀티 트랙 작곡 프로그램</title>
     <style>
         body { font-family: sans-serif; text-align: center; background: #1b1b1b; color: #fff; padding: 15px; margin: 0; }
         h1 { font-size: 1.5rem; margin-bottom: 5px; color: #fff; }
@@ -65,10 +65,13 @@
 
         .timeline-area { background: #2a2a2a; padding: 15px; border-radius: 12px; max-width: 95%; margin: 15px auto; }
         .timeline-container { display: flex; gap: 8px; justify-content: flex-start; margin: 15px 0; overflow-x: auto; padding-bottom: 10px; }
-        .timeline-block { background: #333; border: 2px solid #555; border-radius: 6px; padding: 6px; width: 120px; text-align: center; flex-shrink: 0; }
+        .timeline-block { background: #333; border: 2px solid #555; border-radius: 6px; padding: 8px; width: 125px; text-align: center; flex-shrink: 0; }
         .timeline-block.current { border-color: #ffc107; background: #443c25; }
-        .timeline-label { font-size: 0.75rem; font-weight: bold; margin-bottom: 6px; color: #aaa; }
+        .timeline-label { font-size: 0.8rem; font-weight: bold; margin-bottom: 6px; color: #fff; display: flex; justify-content: space-between; align-items: center; }
         .timeline-block select { background: #222; color: #fff; border: 1px solid #666; border-radius: 4px; padding: 2px; width: 100%; cursor: pointer; font-size: 0.75rem; margin-bottom: 4px; }
+        
+        .play-bar-btn { background: #28a745; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 0.7rem; cursor: pointer; font-weight: bold; }
+        .play-bar-btn.playing { background: #dc3545; }
 
         .bar-control-btn { padding: 6px 14px; font-size: 0.85rem; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; margin: 0 5px; }
         .add-bar { background: #00adb5; color: white; }
@@ -76,15 +79,18 @@
 
         .controls { margin-top: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
         .btn-group { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-        button.main-btn { padding: 12px 20px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 6px; border: none; min-width: 140px; }
+        button.main-btn { padding: 12px 20px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 6px; border: none; min-width: 130px; }
         .play-btn { background: #28a745; color: white; }
-        .wav-btn { background: #ffc107; color: black; }
+        .record-btn { background: #dc3545; color: white; }
+        .record-btn.recording { background: #ff9800; animation: blink 1s infinite; }
         .midi-btn { background: #007bff; color: white; }
+
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
-    <h1>🎼 커스텀 악기(샘플러) 지원 작곡 프로그램</h1>
+    <h1>🎼 커스텀 악기 지원 멀티 트랙 작곡 프로그램</h1>
 
     <div class="global-status-bar">
         <div class="bpm-container">
@@ -120,7 +126,7 @@
     </div>
 
     <div class="timeline-area">
-        <div class="section-title" style="margin-top:0;">3단계: 마디별 트랙 패턴 조립</div>
+        <div class="section-title" style="margin-top:0;">3단계: 마디별 트랙 패턴 조립 및 부분 재생</div>
         <div class="timeline-container" id="songTimeline"></div>
         <div>
             <button class="bar-control-btn add-bar" id="addBarBtn">+ 마디 추가</button>
@@ -131,7 +137,7 @@
     <div class="controls">
         <div class="btn-group">
             <button class="main-btn play-btn" id="playBtn">전체 재생</button>
-            <button class="main-btn wav-btn" id="saveWavBtn">WAV 다운로드</button>
+            <button class="main-btn record-btn" id="recordBtn">🔴 녹음 시작 (WAV)</button>
             <button class="main-btn midi-btn" id="saveMidiBtn">MIDI 파일 저장</button>
         </div>
     </div>
@@ -140,7 +146,7 @@
         const STORAGE_KEY = 'MULTI_TRACK_COMPOSER_CUSTOM_SAMPLE_2026';
         const MIDI_NOTES = [72, 71, 69, 67, 65, 64, 62, 60]; 
         const FREQUENCIES = [523.25, 493.88, 440.00, 392.00, 349.23, 329.63, 293.66, 261.63]; 
-        const BASE_FREQ = 261.63; // C4 도 기준 주파수
+        const BASE_FREQ = 261.63; 
         const ROWS = FREQUENCIES.length; 
         const COLS = 16; 
         const NUM_PATTERNS = 8;
@@ -158,7 +164,9 @@
         let copiedPatternData = null;
         let isTieMode = false;
 
-        let audioCtx = null, isPlaying = false, intervalId = null, currentTimelineStep = 0, mediaRecorder, audioChunks = [], dest;
+        let audioCtx = null, isPlaying = false, intervalId = null, currentTimelineStep = 0, mediaRecorder = null, audioChunks = [], dest = null;
+        let isRecording = false;
+        let playingBarMode = -1; // -1: 전체재생, 0이상의 숫자: 특정 마디 전용 재생
         let activeNodes = {};
 
         function createEmptyPatternBank() {
@@ -288,7 +296,7 @@
                     try {
                         const parsed = JSON.parse(evt.target.result);
                         if(!parsed.tracks) throw new Error("올바른 파일이 아닙니다.");
-                        if(isPlaying) togglePlayback();
+                        if(isPlaying) stopPlayback();
 
                         tracks = parsed.tracks;
                         tracks.forEach(t => { t.audioBuffer = null; });
@@ -311,7 +319,7 @@
 
             document.getElementById('newProjectBtn').addEventListener('click', () => {
                 if(confirm("초기화하시겠습니까?")) {
-                    if(isPlaying) togglePlayback();
+                    if(isPlaying) stopPlayback();
                     initDefaultData();
                     document.getElementById('bpmSlider').value = currentBPM;
                     document.getElementById('bpmDisplay').textContent = `${currentBPM} BPM`;
@@ -377,8 +385,15 @@
                 saveToLocalStorage();
             });
 
-            document.getElementById('playBtn').addEventListener('click', togglePlayback);
-            document.getElementById('saveWavBtn').addEventListener('click', downloadWavRecording);
+            document.getElementById('playBtn').addEventListener('click', () => {
+                if(isPlaying && playingBarMode === -1) {
+                    stopPlayback();
+                } else {
+                    startPlayback(-1);
+                }
+            });
+
+            document.getElementById('recordBtn').addEventListener('click', toggleRecording);
             document.getElementById('saveMidiBtn').addEventListener('click', generateMidiExport);
         }
 
@@ -569,7 +584,17 @@
             for (let b = 0; b < totalBars; b++) {
                 const block = document.createElement('div');
                 block.className = 'timeline-block'; block.id = `bar-${b}`;
-                block.innerHTML = `<div class="timeline-label">${b+1}마디</div>`;
+                
+                const isThisBarPlaying = isPlaying && playingBarMode === b;
+
+                block.innerHTML = `
+                    <div class="timeline-label">
+                        <span>${b+1}마디</span>
+                        <button class="play-bar-btn ${isThisBarPlaying ? 'playing' : ''}" onclick="toggleBarPlayback(${b})">
+                            ${isThisBarPlaying ? '■ 정지' : '▶ 재생'}
+                        </button>
+                    </div>
+                `;
                 
                 tracks.forEach((track, tIdx) => {
                     const select = document.createElement('select');
@@ -592,17 +617,45 @@
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             dest = audioCtx.createMediaStreamDestination();
-            mediaRecorder = new MediaRecorder(dest.stream);
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'multi-track-music.wav'; a.click();
-                audioChunks = [];
-            };
         }
 
-        // 💡 오디오 재생엔진 수정: 이음줄 음장(Sustain) 완벽 유지 보완
+        function toggleRecording() {
+            if (!audioCtx) initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const recordBtn = document.getElementById('recordBtn');
+
+            if (!isRecording) {
+                // 녹음 시작
+                audioChunks = [];
+                mediaRecorder = new MediaRecorder(dest.stream);
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = `composition_${new Date().getTime()}.wav`; a.click();
+                    audioChunks = [];
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                recordBtn.classList.add('recording');
+                recordBtn.textContent = "⏹️ 녹음 중지 & 저장";
+
+                if (!isPlaying) {
+                    startPlayback(-1);
+                }
+            } else {
+                // 녹음 중지
+                if (mediaRecorder && mediaRecorder.state === "recording") {
+                    mediaRecorder.stop();
+                }
+                isRecording = false;
+                recordBtn.classList.remove('recording');
+                recordBtn.textContent = "🔴 녹음 시작 (WAV)";
+            }
+        }
+
         function playTone(freq, type = 'triangle', volumePercent = 80, duration = 0.2, key = null, buffer = null) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -610,18 +663,16 @@
             const now = audioCtx.currentTime;
             const targetGain = (volumePercent / 100) * 0.25;
 
-            // 1. 커스텀 샘플 모드 (루프 반복을 적용하여 4칸 이상도 끊기지 않음)
             if (type === 'custom' && buffer) {
                 const source = audioCtx.createBufferSource();
                 source.buffer = buffer;
-                source.loop = true; // 소리 짧아도 루프 처리하여 이음줄 칸수만큼 보장
+                source.loop = true; 
 
                 const rate = freq / BASE_FREQ;
                 source.playbackRate.setValueAtTime(rate, now);
 
                 const gain = audioCtx.createGain();
                 gain.gain.setValueAtTime(targetGain, now);
-                // 지정된 전체 duration 직전까지 볼륨 유지 후 스무스하게 릴리즈
                 gain.gain.setValueAtTime(targetGain, now + Math.max(0.01, duration - 0.05));
                 gain.gain.linearRampToValueAtTime(0.0001, now + duration);
 
@@ -634,7 +685,6 @@
                 return { osc: source, gain };
             }
 
-            // 2. 노이즈 타악기 모드
             if (type === 'noise') {
                 const bufferSize = audioCtx.sampleRate * Math.min(duration, 0.5);
                 const noiseBuf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -651,7 +701,6 @@
                 return null;
             }
 
-            // 3. 내장 파형 신시사이저 (서스테인을 완벽히 유지하여 긴 음 연주 지원)
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = type; 
@@ -661,7 +710,7 @@
             const sustainEndTime = Math.max(now, now + duration - fadeOutDuration);
 
             gain.gain.setValueAtTime(targetGain, now);
-            gain.gain.setValueAtTime(targetGain, sustainEndTime); // 이음줄로 연결된 전체 박자 끝까지 음 유지
+            gain.gain.setValueAtTime(targetGain, sustainEndTime); 
             gain.gain.linearRampToValueAtTime(0.0001, now + duration);
             
             osc.connect(gain); gain.connect(audioCtx.destination); 
@@ -685,25 +734,48 @@
             }
         }
 
-        function togglePlayback() {
+        function toggleBarPlayback(barIdx) {
+            if (isPlaying && playingBarMode === barIdx) {
+                stopPlayback();
+            } else {
+                startPlayback(barIdx);
+            }
+        }
+
+        function startPlayback(barMode = -1) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
 
-            if (isPlaying) {
-                clearTimeout(intervalId);
-                if(mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
-                isPlaying = false;
-                Object.keys(activeNodes).forEach(k => stopKeyNote(k));
-                document.getElementById('playBtn').textContent = "전체 재생";
-                document.querySelectorAll('.note-btn').forEach(b => b.classList.remove('playing'));
-                document.querySelectorAll('.timeline-block').forEach(b => b.classList.remove('current'));
+            if (isPlaying) stopPlayback();
+
+            playingBarMode = barMode;
+            isPlaying = true;
+
+            if (playingBarMode !== -1) {
+                currentTimelineStep = playingBarMode * COLS;
             } else {
-                currentTimelineStep = 0; 
-                if (mediaRecorder) mediaRecorder.start(); 
-                isPlaying = true; 
-                runSongSequencer();
-                document.getElementById('playBtn').textContent = "정지";
+                currentTimelineStep = 0;
             }
+
+            document.getElementById('playBtn').textContent = (playingBarMode === -1) ? "정지" : "전체 재생";
+            drawTimelineUI();
+            runSongSequencer();
+        }
+
+        function stopPlayback() {
+            clearTimeout(intervalId);
+            isPlaying = false;
+            playingBarMode = -1;
+            Object.keys(activeNodes).forEach(k => stopKeyNote(k));
+
+            if (isRecording) {
+                toggleRecording(); 
+            }
+
+            document.getElementById('playBtn').textContent = "전체 재생";
+            document.querySelectorAll('.note-btn').forEach(b => b.classList.remove('playing'));
+            document.querySelectorAll('.timeline-block').forEach(b => b.classList.remove('current'));
+            drawTimelineUI();
         }
 
         function getStepDurationMs(bpm) { return (60000 / bpm) / 4; }
@@ -711,7 +783,11 @@
         function runSongSequencer() {
             function nextStep() {
                 if (!isPlaying) return;
-                const totalSteps = totalBars * COLS;
+
+                const startStepIndex = (playingBarMode !== -1) ? (playingBarMode * COLS) : 0;
+                const endStepIndex = (playingBarMode !== -1) ? ((playingBarMode + 1) * COLS) : (totalBars * COLS);
+                const stepSpan = endStepIndex - startStepIndex;
+
                 const currentBar = Math.floor(currentTimelineStep / COLS);
                 const currentStepInBar = currentTimelineStep % COLS;
 
@@ -734,7 +810,8 @@
                         const cell = track.patterns[patternIdx][r][currentStepInBar];
 
                         if (cell.on) {
-                            const prevStepGlobal = (currentTimelineStep - 1 + totalSteps) % totalSteps;
+                            const relativePos = currentTimelineStep - startStepIndex;
+                            const prevStepGlobal = startStepIndex + ((relativePos - 1 + stepSpan) % stepSpan);
                             const prevBar = Math.floor(prevStepGlobal / COLS);
                             const prevStepInBarVal = prevStepGlobal % COLS;
                             const prevPatternIdx = songTimelineState[tIdx][prevBar];
@@ -744,8 +821,8 @@
 
                             if (!isContinuedTie) {
                                 let sustainLength = 1;
-                                for (let s = 1; s < totalSteps; s++) {
-                                    const checkStepGlobal = (currentTimelineStep + s) % totalSteps;
+                                for (let s = 1; s < stepSpan; s++) {
+                                    const checkStepGlobal = startStepIndex + ((relativePos + s) % stepSpan);
                                     const checkBar = Math.floor(checkStepGlobal / COLS);
                                     const checkStepInBar = checkStepGlobal % COLS;
                                     const checkPatternIdx = songTimelineState[tIdx][checkBar];
@@ -770,19 +847,13 @@
                         }
                     });
                 }
-                currentTimelineStep = (currentTimelineStep + 1) % totalSteps;
+
+                const relativePos = currentTimelineStep - startStepIndex;
+                currentTimelineStep = startStepIndex + ((relativePos + 1) % stepSpan);
+
                 intervalId = setTimeout(nextStep, getStepDurationMs(currentBPM));
             }
             nextStep();
-        }
-
-        function downloadWavRecording() {
-            if (mediaRecorder && mediaRecorder.state === "recording") {
-                mediaRecorder.stop(); clearTimeout(intervalId); isPlaying = false;
-                document.getElementById('playBtn').textContent = "전체 재생";
-                document.querySelectorAll('.note-btn').forEach(b => b.classList.remove('playing'));
-                document.querySelectorAll('.timeline-block').forEach(b => b.classList.remove('current'));
-            } else { alert("연주 중일 때만 저장이 가능합니다. 전체 재생을 실행해 주세요."); }
         }
 
         function generateMidiExport() {
