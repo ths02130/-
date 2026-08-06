@@ -55,7 +55,7 @@
 
         /* 하단 조립 타임라인 */
         .timeline-area { background: #2a2a2a; padding: 15px; border-radius: 12px; max-width: 95%; margin: 15px auto; }
-        .timeline-container { display: flex; gap: 8px; justify-start: margin: 15px 0; overflow-x: auto; padding-bottom: 10px; }
+        .timeline-container { display: flex; gap: 8px; justify-content: flex-start; margin: 15px 0; overflow-x: auto; padding-bottom: 10px; }
         .timeline-block { background: #333; border: 2px solid #555; border-radius: 6px; padding: 6px; width: 120px; text-align: center; flex-shrink: 0; }
         .timeline-block.current { border-color: #ffc107; background: #443c25; }
         .timeline-label { font-size: 0.75rem; font-weight: bold; margin-bottom: 6px; color: #aaa; }
@@ -435,7 +435,16 @@
                     }
                     btn.addEventListener('click', () => {
                         saveUndoState();
-                        currentGrid[r][c] = !currentGrid[r][c];
+                        // 음을 켜는 순간(켜짐으로 바뀌는 시점) 미리듣기 소리 재생
+                        const newState = !currentGrid[r][c];
+                        currentGrid[r][c] = newState;
+                        
+                        if (newState) {
+                            if (!audioCtx) initAudio();
+                            if (audioCtx.state === 'suspended') audioCtx.resume();
+                            playTone(FREQUENCIES[r], tracks[currentTrackIdx].instrument);
+                        }
+
                         drawGrid();
                         saveToLocalStorage();
                     });
@@ -485,7 +494,9 @@
         }
 
         function playTone(freq, type = 'triangle') {
-            if (!audioCtx) return;
+            if (!audioCtx) initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
             if (type === 'noise') {
                 const bufferSize = audioCtx.sampleRate * 0.1;
                 const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -496,7 +507,8 @@
                 const gain = audioCtx.createGain();
                 gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                whiteNoise.connect(gain); gain.connect(audioCtx.destination); gain.connect(dest);
+                whiteNoise.connect(gain); gain.connect(audioCtx.destination); 
+                if (dest) whiteNoise.connect(dest);
                 whiteNoise.start();
                 return;
             }
@@ -507,21 +519,27 @@
             osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
             gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-            osc.connect(gain); gain.connect(audioCtx.destination); gain.connect(dest);
+            osc.connect(gain); gain.connect(audioCtx.destination); 
+            if (dest) osc.connect(dest);
             osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         }
 
         function togglePlayback() {
             if (!audioCtx) initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
             if (isPlaying) {
                 clearTimeout(intervalId);
-                if(mediaRecorder.state === "recording") mediaRecorder.stop();
+                if(mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
                 isPlaying = false;
                 document.getElementById('playBtn').textContent = "전체 재생";
                 document.querySelectorAll('.note-btn').forEach(b => b.classList.remove('playing'));
                 document.querySelectorAll('.timeline-block').forEach(b => b.classList.remove('current'));
             } else {
-                currentTimelineStep = 0; mediaRecorder.start(); isPlaying = true; runSongSequencer();
+                currentTimelineStep = 0; 
+                if (mediaRecorder) mediaRecorder.start(); 
+                isPlaying = true; 
+                runSongSequencer();
                 document.getElementById('playBtn').textContent = "정지";
             }
         }
