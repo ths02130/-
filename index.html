@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다중 트랙 & 선택적 이음줄(Tie) 작곡 프로그램</title>
+    <title>커스텀 샘플러 지원 멀티 트랙 작곡 프로그램</title>
     <style>
         body { font-family: sans-serif; text-align: center; background: #1b1b1b; color: #fff; padding: 15px; margin: 0; }
         h1 { font-size: 1.5rem; margin-bottom: 5px; color: #fff; }
@@ -23,6 +23,9 @@
         .track-name-input { background: #222; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; font-size: 0.9rem; width: 110px; }
         .sound-select { background: #222; color: #ffc107; border: 1px solid #00adb5; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; cursor: pointer; }
         
+        .custom-file-btn { background: #17a2b8; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
+        .sample-status { font-size: 0.75rem; color: #ffc107; margin-left: 4px; }
+
         .volume-container { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #ccc; }
         .volume-slider { width: 80px; cursor: pointer; }
         .volume-display { font-size: 0.8rem; color: #ffc107; min-width: 35px; }
@@ -80,7 +83,7 @@
 </head>
 <body>
 
-    <h1>🎼 멀티 트랙 & 선택적 이음줄(Tie) 작곡 프로그램</h1>
+    <h1>🎼 커스텀 악기(샘플러) 지원 작곡 프로그램</h1>
 
     <div class="global-status-bar">
         <div class="bpm-container">
@@ -92,7 +95,7 @@
     </div>
 
     <div class="track-control-panel">
-        <div class="section-title" style="margin-top:0;">1단계: 트랙, 악기 음색 및 볼륨 설정</div>
+        <div class="section-title" style="margin-top:0;">1단계: 트랙 악기 및 커스텀 음원 파일 설정</div>
         <div class="track-list" id="trackListContainer"></div>
         <button class="track-btn select-track-btn" id="addTrackBtn">+ 새 트랙 추가</button>
     </div>
@@ -133,9 +136,10 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'MULTI_TRACK_COMPOSER_TIE_PERFECT_2026';
+        const STORAGE_KEY = 'MULTI_TRACK_COMPOSER_CUSTOM_SAMPLE_2026';
         const MIDI_NOTES = [72, 71, 69, 67, 65, 64, 62, 60]; 
         const FREQUENCIES = [523.25, 493.88, 440.00, 392.00, 349.23, 329.63, 293.66, 261.63]; 
+        const BASE_FREQ = 261.63; // C4 도 기준 주파수
         const ROWS = FREQUENCIES.length; 
         const COLS = 16; 
         const NUM_PATTERNS = 8;
@@ -166,9 +170,9 @@
 
         function initDefaultData() {
             tracks = [
-                { name: '트랙 1 (피아노)', instrument: 'triangle', volume: 80, color: TRACK_COLORS[0], patterns: createEmptyPatternBank() },
-                { name: '트랙 2 (보컬/휘슬)', instrument: 'sine', volume: 80, color: TRACK_COLORS[1], patterns: createEmptyPatternBank() },
-                { name: '트랙 3 (베이스)', instrument: 'square', volume: 70, color: TRACK_COLORS[2], patterns: createEmptyPatternBank() }
+                { name: '트랙 1 (피아노)', instrument: 'triangle', volume: 80, color: TRACK_COLORS[0], patterns: createEmptyPatternBank(), audioBuffer: null, sampleName: '' },
+                { name: '트랙 2 (보컬/휘슬)', instrument: 'sine', volume: 80, color: TRACK_COLORS[1], patterns: createEmptyPatternBank(), audioBuffer: null, sampleName: '' },
+                { name: '트랙 3 (베이스)', instrument: 'square', volume: 70, color: TRACK_COLORS[2], patterns: createEmptyPatternBank(), audioBuffer: null, sampleName: '' }
             ];
             totalBars = 4;
             patternNames = Array(NUM_PATTERNS).fill().map((_, i) => `패턴 ${i + 1}`);
@@ -188,7 +192,15 @@
         }
 
         function saveToLocalStorage() {
-            const packed = { tracks, patternNames, songTimelineState, totalBars, currentBPM };
+            const saveTracks = tracks.map(t => ({
+                name: t.name,
+                instrument: t.instrument,
+                volume: t.volume,
+                color: t.color,
+                patterns: t.patterns,
+                sampleName: t.sampleName
+            }));
+            const packed = { tracks: saveTracks, patternNames, songTimelineState, totalBars, currentBPM };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(packed));
             calculateTotalDuration();
         }
@@ -201,6 +213,8 @@
                 tracks = parsed.tracks;
                 tracks.forEach(t => {
                     if (t.volume === undefined) t.volume = 80;
+                    if (!t.audioBuffer) t.audioBuffer = null;
+                    if (!t.sampleName) t.sampleName = '';
                     t.patterns.forEach(p => {
                         for(let r=0; r<ROWS; r++){
                             for(let c=0; c<COLS; c++){
@@ -249,7 +263,15 @@
             });
 
             document.getElementById('exportJsonBtn').addEventListener('click', () => {
-                const dataStr = JSON.stringify({ version: "2026.tie.perfect", currentBPM, totalBars, patternNames, songTimelineState, tracks }, null, 2);
+                const saveTracks = tracks.map(t => ({
+                    name: t.name,
+                    instrument: t.instrument,
+                    volume: t.volume,
+                    color: t.color,
+                    patterns: t.patterns,
+                    sampleName: t.sampleName
+                }));
+                const dataStr = JSON.stringify({ version: "2026.custom_sampler", currentBPM, totalBars, patternNames, songTimelineState, tracks: saveTracks }, null, 2);
                 const blob = new Blob([dataStr], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -268,6 +290,7 @@
                         if(isPlaying) togglePlayback();
 
                         tracks = parsed.tracks;
+                        tracks.forEach(t => { t.audioBuffer = null; });
                         songTimelineState = parsed.songTimelineState;
                         patternNames = parsed.patternNames;
                         totalBars = parsed.totalBars || 4;
@@ -278,7 +301,7 @@
                         document.getElementById('bpmDisplay').textContent = `${currentBPM} BPM`;
 
                         renderTrackList(); drawPatternManager(); drawGrid(); drawTimelineUI(); saveToLocalStorage();
-                        alert("📁 성공적으로 불러왔습니다!");
+                        alert("📁 프로젝트를 정상적으로 불러왔습니다! (커스텀 음원은 다시 불러와주셔야 합니다)");
                     } catch(err) { alert("로드 에러: " + err.message); }
                     e.target.value = '';
                 };
@@ -303,7 +326,9 @@
                     instrument: 'triangle',
                     volume: 80,
                     color: color,
-                    patterns: createEmptyPatternBank()
+                    patterns: createEmptyPatternBank(),
+                    audioBuffer: null,
+                    sampleName: ''
                 });
                 songTimelineState.push(Array(totalBars).fill(0));
                 renderTrackList(); drawTimelineUI(); saveToLocalStorage();
@@ -367,6 +392,31 @@
             document.getElementById('undoBtn').disabled = false;
         }
 
+        // 커스텀 음원 파일 등록 처리
+        function loadCustomAudioFile(trackIdx, event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!audioCtx) initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const arrayBuffer = e.target.result;
+                audioCtx.decodeAudioData(arrayBuffer, (buffer) => {
+                    tracks[trackIdx].audioBuffer = buffer;
+                    tracks[trackIdx].sampleName = file.name;
+                    tracks[trackIdx].instrument = 'custom';
+                    renderTrackList();
+                    saveToLocalStorage();
+                    alert(`'${file.name}' 소리가 ${tracks[trackIdx].name} 악기로 선택되었습니다!`);
+                }, (err) => {
+                    alert("오디오 파일을 디코딩하는데 실패했습니다.");
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
         function renderTrackList() {
             const container = document.getElementById('trackListContainer');
             container.innerHTML = '';
@@ -374,6 +424,8 @@
                 const item = document.createElement('div');
                 item.className = `track-item ${idx === currentTrackIdx ? 'active' : ''}`;
                 item.style.borderLeftColor = track.color;
+
+                const isCustom = track.instrument === 'custom';
 
                 item.innerHTML = `
                     <div class="track-info">
@@ -384,7 +436,11 @@
                             <option value="sine" ${track.instrument === 'sine' ? 'selected' : ''}>🎷 플루트/보컬 (Sine)</option>
                             <option value="square" ${track.instrument === 'square' ? 'selected' : ''}>🎻 베이스 (Square)</option>
                             <option value="noise" ${track.instrument === 'noise' ? 'selected' : ''}>🥁 노이즈 드럼 (Perc)</option>
+                            <option value="custom" ${isCustom ? 'selected' : ''}>🎙️ 커스텀 샘플 파일</option>
                         </select>
+                        <button class="custom-file-btn" onclick="document.getElementById('sampleInput-${idx}').click()">📂 소리 파일 선택</button>
+                        <input type="file" id="sampleInput-${idx}" accept="audio/*" style="display:none;" onchange="loadCustomAudioFile(${idx}, event)">
+                        <span class="sample-status">${track.sampleName ? '🎧 ' + track.sampleName : ''}</span>
                         <div class="volume-container">
                             <span>🔊</span>
                             <input type="range" class="volume-slider" min="0" max="100" value="${track.volume}" oninput="updateTrackVolume(${idx}, this.value)">
@@ -401,7 +457,13 @@
         }
 
         function updateTrackName(idx, val) { tracks[idx].name = val; drawTimelineUI(); saveToLocalStorage(); }
-        function updateTrackInstrument(idx, val) { tracks[idx].instrument = val; saveToLocalStorage(); }
+        function updateTrackInstrument(idx, val) { 
+            tracks[idx].instrument = val; 
+            if (val === 'custom' && !tracks[idx].audioBuffer) {
+                document.getElementById(`sampleInput-${idx}`).click();
+            }
+            saveToLocalStorage(); 
+        }
         function updateTrackVolume(idx, val) {
             tracks[idx].volume = parseInt(val);
             const disp = document.getElementById(`vol-disp-${idx}`);
@@ -472,12 +534,11 @@
                             }
                         }
 
-                        // 클릭 시 미리듣기 소리 재생
                         if (cell.on) {
                             if (!audioCtx) initAudio();
                             if (audioCtx.state === 'suspended') audioCtx.resume();
                             const noteDuration = (60 / currentBPM) / 4;
-                            playTone(FREQUENCIES[r], tracks[currentTrackIdx].instrument, tracks[currentTrackIdx].volume, noteDuration);
+                            playTone(FREQUENCIES[r], tracks[currentTrackIdx].instrument, tracks[currentTrackIdx].volume, noteDuration, null, tracks[currentTrackIdx].audioBuffer);
                         }
 
                         drawGrid();
@@ -528,21 +589,45 @@
             };
         }
 
-        // 안정적인 음 연장 오디오 제어
-        function playTone(freq, type = 'triangle', volumePercent = 80, duration = 0.2, key = null) {
+        // 오실레이터 신시사이저 및 샘플러(커스텀 오디오 파일) 겸용 연주 재생 엔진
+        function playTone(freq, type = 'triangle', volumePercent = 80, duration = 0.2, key = null, buffer = null) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
 
             const now = audioCtx.currentTime;
             const targetGain = (volumePercent / 100) * 0.25;
 
+            // 1. 커스텀 파일 샘플러 모드
+            if (type === 'custom' && buffer) {
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+
+                // 음고(주파수) 비율에 맞춰 재생 속도 조절 (도 레 미 파 피치 변화)
+                const rate = freq / BASE_FREQ;
+                source.playbackRate.setValueAtTime(rate, now);
+
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(targetGain, now);
+                gain.gain.linearRampToValueAtTime(targetGain, now + Math.max(0.01, duration - 0.02));
+                gain.gain.linearRampToValueAtTime(0.0001, now + duration);
+
+                source.connect(gain);
+                gain.connect(audioCtx.destination);
+                if (dest) source.connect(dest);
+
+                source.start(now);
+                source.stop(now + duration);
+                return { osc: source, gain };
+            }
+
+            // 2. 노이즈 타악기 모드
             if (type === 'noise') {
                 const bufferSize = audioCtx.sampleRate * Math.min(duration, 0.5);
-                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-                const output = buffer.getChannelData(0);
+                const noiseBuf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = noiseBuf.getChannelData(0);
                 for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
                 const whiteNoise = audioCtx.createBufferSource();
-                whiteNoise.buffer = buffer;
+                whiteNoise.buffer = noiseBuf;
                 const gain = audioCtx.createGain();
                 gain.gain.setValueAtTime(targetGain, now);
                 gain.gain.linearRampToValueAtTime(0.001, now + duration);
@@ -552,12 +637,12 @@
                 return null;
             }
 
+            // 3. 합성 파형 신시사이저 (피아노, 신스, 오르간 등)
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = type; 
             osc.frequency.setValueAtTime(freq, now);
             
-            // 이음줄을 통해 늘어난 전체 길이(duration) 동안 릴리즈 없이 일정 음량 유지
             const fadeOutDuration = 0.03;
             const sustainEndTime = Math.max(now, now + duration - fadeOutDuration);
 
@@ -635,14 +720,12 @@
                         const cell = track.patterns[patternIdx][r][currentStepInBar];
 
                         if (cell.on) {
-                            // 이전 스텝의 셀 정보를 조회
                             const prevStepGlobal = (currentTimelineStep - 1 + totalSteps) % totalSteps;
                             const prevBar = Math.floor(prevStepGlobal / COLS);
                             const prevStepInBarVal = prevStepGlobal % COLS;
                             const prevPatternIdx = songTimelineState[tIdx][prevBar];
                             const prevCell = track.patterns[prevPatternIdx][r][prevStepInBarVal];
 
-                            // 이음줄(Tie)이 앞 노트와 이어지는 위치가 아니거나, 독립 이음줄인 경우 새롭게 소리를 계산하여 발성
                             const isContinuedTie = cell.tie && prevCell.on;
 
                             if (!isContinuedTie) {
@@ -665,7 +748,7 @@
                                 const totalToneDuration = stepDurationSec * sustainLength;
 
                                 stopKeyNote(key);
-                                const node = playTone(FREQUENCIES[r], track.instrument, track.volume, totalToneDuration, key);
+                                const node = playTone(FREQUENCIES[r], track.instrument, track.volume, totalToneDuration, key, track.audioBuffer);
                                 if (node) activeNodes[key] = node;
                             }
                         } else {
