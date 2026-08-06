@@ -23,8 +23,9 @@
         .track-name-input { background: #222; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; font-size: 0.9rem; width: 110px; }
         .sound-select { background: #222; color: #ffc107; border: 1px solid #00adb5; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; cursor: pointer; }
         
+        .custom-file-area { display: inline-flex; align-items: center; gap: 6px; }
         .custom-file-btn { background: #17a2b8; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
-        .sample-status { font-size: 0.75rem; color: #ffc107; margin-left: 4px; }
+        .sample-status { font-size: 0.75rem; color: #ffc107; }
 
         .volume-container { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #ccc; }
         .volume-slider { width: 80px; cursor: pointer; }
@@ -392,7 +393,6 @@
             document.getElementById('undoBtn').disabled = false;
         }
 
-        // 커스텀 음원 파일 등록 처리
         function loadCustomAudioFile(trackIdx, event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -409,7 +409,7 @@
                     tracks[trackIdx].instrument = 'custom';
                     renderTrackList();
                     saveToLocalStorage();
-                    alert(`'${file.name}' 소리가 ${tracks[trackIdx].name} 악기로 선택되었습니다!`);
+                    alert(`'${file.name}' 소리가 ${tracks[trackIdx].name} 악기로 등록되었습니다!`);
                 }, (err) => {
                     alert("오디오 파일을 디코딩하는데 실패했습니다.");
                 });
@@ -438,9 +438,16 @@
                             <option value="noise" ${track.instrument === 'noise' ? 'selected' : ''}>🥁 노이즈 드럼 (Perc)</option>
                             <option value="custom" ${isCustom ? 'selected' : ''}>🎙️ 커스텀 샘플 파일</option>
                         </select>
-                        <button class="custom-file-btn" onclick="document.getElementById('sampleInput-${idx}').click()">📂 소리 파일 선택</button>
-                        <input type="file" id="sampleInput-${idx}" accept="audio/*" style="display:none;" onchange="loadCustomAudioFile(${idx}, event)">
-                        <span class="sample-status">${track.sampleName ? '🎧 ' + track.sampleName : ''}</span>
+
+                        <!-- 커스텀 악기일 경우에만 노출되는 영역 -->
+                        ${isCustom ? `
+                            <div class="custom-file-area">
+                                <button class="custom-file-btn" onclick="document.getElementById('sampleInput-${idx}').click()">📂 소리 파일 선택</button>
+                                <input type="file" id="sampleInput-${idx}" accept="audio/*" style="display:none;" onchange="loadCustomAudioFile(${idx}, event)">
+                                <span class="sample-status">${track.sampleName ? '🎧 ' + track.sampleName : '(파일을 선택해주세요)'}</span>
+                            </div>
+                        ` : ''}
+
                         <div class="volume-container">
                             <span>🔊</span>
                             <input type="range" class="volume-slider" min="0" max="100" value="${track.volume}" oninput="updateTrackVolume(${idx}, this.value)">
@@ -457,13 +464,21 @@
         }
 
         function updateTrackName(idx, val) { tracks[idx].name = val; drawTimelineUI(); saveToLocalStorage(); }
+        
         function updateTrackInstrument(idx, val) { 
             tracks[idx].instrument = val; 
+            renderTrackList(); // UI 다시 그려서 버튼 숨김/노출 적용
+            
+            // 커스텀으로 변경했을 때 기존 불러온 파일이 없으면 즉시 파일 탐색기 열기
             if (val === 'custom' && !tracks[idx].audioBuffer) {
-                document.getElementById(`sampleInput-${idx}`).click();
+                setTimeout(() => {
+                    const fileInput = document.getElementById(`sampleInput-${idx}`);
+                    if (fileInput) fileInput.click();
+                }, 50);
             }
             saveToLocalStorage(); 
         }
+
         function updateTrackVolume(idx, val) {
             tracks[idx].volume = parseInt(val);
             const disp = document.getElementById(`vol-disp-${idx}`);
@@ -589,7 +604,6 @@
             };
         }
 
-        // 오실레이터 신시사이저 및 샘플러(커스텀 오디오 파일) 겸용 연주 재생 엔진
         function playTone(freq, type = 'triangle', volumePercent = 80, duration = 0.2, key = null, buffer = null) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -597,12 +611,10 @@
             const now = audioCtx.currentTime;
             const targetGain = (volumePercent / 100) * 0.25;
 
-            // 1. 커스텀 파일 샘플러 모드
             if (type === 'custom' && buffer) {
                 const source = audioCtx.createBufferSource();
                 source.buffer = buffer;
 
-                // 음고(주파수) 비율에 맞춰 재생 속도 조절 (도 레 미 파 피치 변화)
                 const rate = freq / BASE_FREQ;
                 source.playbackRate.setValueAtTime(rate, now);
 
@@ -620,7 +632,6 @@
                 return { osc: source, gain };
             }
 
-            // 2. 노이즈 타악기 모드
             if (type === 'noise') {
                 const bufferSize = audioCtx.sampleRate * Math.min(duration, 0.5);
                 const noiseBuf = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -637,7 +648,6 @@
                 return null;
             }
 
-            // 3. 합성 파형 신시사이저 (피아노, 신스, 오르간 등)
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = type; 
