@@ -21,9 +21,15 @@
         .track-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
         .track-item { display: flex; align-items: center; justify-content: space-between; background: #333; padding: 10px 15px; border-radius: 6px; border-left: 6px solid #888; flex-wrap: wrap; gap: 10px; }
         .track-item.active { background: #3a3f44; }
-        .track-info { display: flex; align-items: center; gap: 10px; font-weight: bold; }
-        .track-name-input { background: #222; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; font-size: 0.9rem; width: 120px; }
+        .track-info { display: flex; align-items: center; gap: 12px; font-weight: bold; flex-wrap: wrap; }
+        .track-name-input { background: #222; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; font-size: 0.9rem; width: 110px; }
         .sound-select { background: #222; color: #ffc107; border: 1px solid #00adb5; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; cursor: pointer; }
+        
+        /* 볼륨 조절 슬라이더 컨트롤 */
+        .volume-container { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #ccc; }
+        .volume-slider { width: 80px; cursor: pointer; }
+        .volume-display { font-size: 0.8rem; color: #ffc107; min-width: 35px; }
+
         .track-btn { padding: 6px 12px; font-size: 0.85rem; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; }
         .select-track-btn { background: #00adb5; color: white; }
         .delete-track-btn { background: #dc3545; color: white; }
@@ -89,9 +95,9 @@
         <div class="duration-display" id="totalDurationDisplay">⏱️ 총 길이: 0분 0초</div>
     </div>
 
-    <!-- 1단계: 멀티 트랙 & 악기 소리 설정 -->
+    <!-- 1단계: 멀티 트랙 & 악기 소리 및 볼륨 설정 -->
     <div class="track-control-panel">
-        <div class="section-title" style="margin-top:0;">1단계: 트랙 및 악기 음색 설정</div>
+        <div class="section-title" style="margin-top:0;">1단계: 트랙, 악기 음색 및 볼륨 설정</div>
         <div class="track-list" id="trackListContainer"></div>
         <button class="track-btn select-track-btn" id="addTrackBtn">+ 새 트랙 추가</button>
     </div>
@@ -163,9 +169,9 @@
 
         function initDefaultData() {
             tracks = [
-                { name: '트랙 1 (피아노)', instrument: 'triangle', color: TRACK_COLORS[0], patterns: createEmptyPatternBank() },
-                { name: '트랙 2 (보컬/휘슬)', instrument: 'sine', color: TRACK_COLORS[1], patterns: createEmptyPatternBank() },
-                { name: '트랙 3 (베이스)', instrument: 'square', color: TRACK_COLORS[2], patterns: createEmptyPatternBank() }
+                { name: '트랙 1 (피아노)', instrument: 'triangle', volume: 80, color: TRACK_COLORS[0], patterns: createEmptyPatternBank() },
+                { name: '트랙 2 (보컬/휘슬)', instrument: 'sine', volume: 80, color: TRACK_COLORS[1], patterns: createEmptyPatternBank() },
+                { name: '트랙 3 (베이스)', instrument: 'square', volume: 70, color: TRACK_COLORS[2], patterns: createEmptyPatternBank() }
             ];
             totalBars = 4;
             patternNames = Array(NUM_PATTERNS).fill().map((_, i) => `패턴 ${i + 1}`);
@@ -196,6 +202,7 @@
             try {
                 const parsed = JSON.parse(raw);
                 tracks = parsed.tracks;
+                tracks.forEach(t => { if (t.volume === undefined) t.volume = 80; }); // 이전 데이터 호환성 보장
                 patternNames = parsed.patternNames;
                 songTimelineState = parsed.songTimelineState;
                 totalBars = parsed.totalBars || 4;
@@ -251,6 +258,7 @@
                         if(isPlaying) togglePlayback();
 
                         tracks = parsed.tracks;
+                        tracks.forEach(t => { if (t.volume === undefined) t.volume = 80; });
                         songTimelineState = parsed.songTimelineState;
                         patternNames = parsed.patternNames;
                         totalBars = parsed.totalBars || parsed.songTimelineState[0].length;
@@ -289,6 +297,7 @@
                 tracks.push({
                     name: `트랙 ${tracks.length + 1}`,
                     instrument: 'triangle',
+                    volume: 80,
                     color: color,
                     patterns: createEmptyPatternBank()
                 });
@@ -374,6 +383,11 @@
                             <option value="square" ${track.instrument === 'square' ? 'selected' : ''}>🎻 베이스 (Square)</option>
                             <option value="noise" ${track.instrument === 'noise' ? 'selected' : ''}>🥁 노이즈 드럼 (Perc)</option>
                         </select>
+                        <div class="volume-container">
+                            <span>🔊</span>
+                            <input type="range" class="volume-slider" min="0" max="100" value="${track.volume}" oninput="updateTrackVolume(${idx}, this.value)">
+                            <span class="volume-display" id="vol-disp-${idx}">${track.volume}%</span>
+                        </div>
                     </div>
                     <div>
                         <button class="track-btn select-track-btn" onclick="selectTrack(${idx})">${idx === currentTrackIdx ? '편집 중' : '트랙 선택'}</button>
@@ -386,6 +400,12 @@
 
         function updateTrackName(idx, val) { tracks[idx].name = val; drawTimelineUI(); saveToLocalStorage(); }
         function updateTrackInstrument(idx, val) { tracks[idx].instrument = val; saveToLocalStorage(); }
+        function updateTrackVolume(idx, val) {
+            tracks[idx].volume = parseInt(val);
+            const disp = document.getElementById(`vol-disp-${idx}`);
+            if (disp) disp.textContent = `${val}%`;
+            saveToLocalStorage();
+        }
         
         function selectTrack(idx) {
             currentTrackIdx = idx;
@@ -435,14 +455,13 @@
                     }
                     btn.addEventListener('click', () => {
                         saveUndoState();
-                        // 음을 켜는 순간(켜짐으로 바뀌는 시점) 미리듣기 소리 재생
                         const newState = !currentGrid[r][c];
                         currentGrid[r][c] = newState;
                         
                         if (newState) {
                             if (!audioCtx) initAudio();
                             if (audioCtx.state === 'suspended') audioCtx.resume();
-                            playTone(FREQUENCIES[r], tracks[currentTrackIdx].instrument);
+                            playTone(FREQUENCIES[r], tracks[currentTrackIdx].instrument, tracks[currentTrackIdx].volume);
                         }
 
                         drawGrid();
@@ -493,9 +512,12 @@
             };
         }
 
-        function playTone(freq, type = 'triangle') {
+        function playTone(freq, type = 'triangle', volumePercent = 80) {
             if (!audioCtx) initAudio();
             if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            // 볼륨 백분율(0~100)을 0.0 ~ 0.25 배율로 변환
+            const targetGain = (volumePercent / 100) * 0.25;
 
             if (type === 'noise') {
                 const bufferSize = audioCtx.sampleRate * 0.1;
@@ -505,8 +527,8 @@
                 const whiteNoise = audioCtx.createBufferSource();
                 whiteNoise.buffer = buffer;
                 const gain = audioCtx.createGain();
-                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(targetGain, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
                 whiteNoise.connect(gain); gain.connect(audioCtx.destination); 
                 if (dest) whiteNoise.connect(dest);
                 whiteNoise.start();
@@ -517,7 +539,7 @@
             const gain = audioCtx.createGain();
             osc.type = type; 
             osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-            gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gain.gain.setValueAtTime(targetGain, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
             osc.connect(gain); gain.connect(audioCtx.destination); 
             if (dest) osc.connect(dest);
@@ -568,7 +590,7 @@
                     tracks.forEach((track, tIdx) => {
                         const patternIdx = songTimelineState[tIdx][currentBar];
                         if (track.patterns[patternIdx][r][currentStepInBar]) {
-                            playTone(FREQUENCIES[r], track.instrument);
+                            playTone(FREQUENCIES[r], track.instrument, track.volume);
                         }
                     });
                 }
@@ -599,7 +621,9 @@
                         for (let r = 0; r < ROWS; r++) {
                             if (track.patterns[patternIdx][r][c]) {
                                 const note = MIDI_NOTES[r];
-                                trackEvents.push({ tick: absoluteTick, type: 0x90 + tIdx, note: note, vel: 100 }); 
+                                // 트랙의 볼륨(0~100)을 MIDI Velocity(0~127)로 변환
+                                const midiVel = Math.round((track.volume / 100) * 127);
+                                trackEvents.push({ tick: absoluteTick, type: 0x90 + tIdx, note: note, vel: midiVel }); 
                                 trackEvents.push({ tick: absoluteTick + 40, type: 0x80 + tIdx, note: note, vel: 0 });  
                             }
                         }
